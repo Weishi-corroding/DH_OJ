@@ -1,0 +1,11 @@
+[
+    {
+        "domain": ".oj.dhu.edu.cn",
+        "httpOnly": false,
+        "name": "JSESSIONID",
+        "path": "/",
+        "sameSite": "Lax",
+        "secure": true,
+        "value": "E560E0239A9F2D43C0F262921309585E"
+    }
+]
