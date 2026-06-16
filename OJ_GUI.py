@@ -1206,31 +1206,37 @@ class OJWorker(QThread):
                 sel.click()
             except:
                 driver.execute_script("arguments[0].click();", sel)
-            time.sleep(0.3)
+            time.sleep(0.5)
 
-            # 获取选项（含 portal 模式 fallback）
-            options = driver.find_elements(By.CSS_SELECTOR, ".n-base-select-option__content")
+            # 获取选项（portal 模式：选项渲染在 v-binder-follower-container 中）
+            options = driver.find_elements(By.CSS_SELECTOR, ".n-select-menu .n-base-select-option")
             if not options:
-                # 可能渲染到 portal 中
                 options = driver.find_elements(By.XPATH,
-                    "//div[contains(@class, 'n-base-select-option')]")
-            if not options:
-                # 可能是 n-select-menu 里的
-                options = driver.find_elements(By.CSS_SELECTOR, ".n-select-menu .n-base-select-option")
+                    "//div[contains(@class, 'n-base-select-option') and contains(@class, 'n-base-select-option--show-checkmark')]")
 
             if options:
                 self.log(f"选择: {options[0].text}", "info")
+                # Naive UI n-select 需要 mousedown 事件触发选择，用 ActionChains 模拟完整鼠标操作
                 try:
-                    options[0].click()
+                    from selenium.webdriver.common.action_chains import ActionChains
+                    actions = ActionChains(driver)
+                    actions.move_to_element(options[0])
+                    actions.pause(0.1)
+                    actions.click()
+                    actions.perform()
                 except:
-                    driver.execute_script("arguments[0].click();", options[0])
+                    # 回退：JS 派发 mousedown 事件
+                    driver.execute_script("""
+                        arguments[0].dispatchEvent(new MouseEvent('mousedown', {
+                            bubbles: true, cancelable: true, view: window
+                        }));
+                    """, options[0])
             else:
                 self.log("未找到任何选项", "warning")
 
-            time.sleep(0.3)
+            time.sleep(0.5)
             draw_btn = wait_and_click(By.XPATH, "//button[span[contains(text(), '我要抽题')]]")
             if not draw_btn:
-                # JS 回退
                 btns = driver.find_elements(By.XPATH, "//button[span[contains(text(), '我要抽题')]]")
                 if btns:
                     driver.execute_script("arguments[0].click();", btns[0])
@@ -1657,12 +1663,9 @@ class OJWorker(QThread):
                 # ---- 结果检查 ----
 
                 # 1. "已AC但未提交"确认弹窗（AC后先弹此窗，提交后才出现"我要抽题"）
-                #    首次检查用30s长超时，后续用瞬时检查避免每次循环都空等30s
-                ac_timeout = 30 if not _ac_wait_done else 3
                 ac_submit_btn = wait_and_click(By.XPATH,
                     "//div[contains(@class, 'n-dialog__action')]//button[span[contains(text(), '提交')]]",
-                    timeout=ac_timeout)
-                _ac_wait_done = True
+                    timeout=30)
 
                 if ac_submit_btn:
                     self.log("检测到'已AC但未提交'弹窗 → 已点击提交", "system")

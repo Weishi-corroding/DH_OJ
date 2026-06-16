@@ -273,7 +273,6 @@ def handle_draw_modal(driver):
 
         modal = driver.find_elements(By.CSS_SELECTOR, ".n-card.n-modal")
         if not modal:
-            # 也可能是 .n-drawer 或别的容器
             print("    未找到 n-card.n-modal，尝试 .n-dialog")
             modal = driver.find_elements(By.CSS_SELECTOR, ".n-dialog")
             if not modal:
@@ -308,7 +307,7 @@ def handle_draw_modal(driver):
             sel_to_click = selections[0]
 
         if sel_to_click:
-            print(f"    点击选择框 sel[{selections.index(sel_to_click) if sel_to_click in selections else -1}]")
+            print(f"    点击选择框")
             try:
                 sel_to_click.click()
             except:
@@ -316,45 +315,37 @@ def handle_draw_modal(driver):
                 driver.execute_script("arguments[0].click();", sel_to_click)
             time.sleep(0.5)
 
-            # 5. 检查是否有弹出选项
-            options = driver.find_elements(By.CSS_SELECTOR, ".n-base-select-option__content")
-            print(f"    初始 options 数量: {len(options)}")
+            # 5. 检查 portal 中的选项（Naive UI 渲染到 v-binder-follower-container）
+            options = driver.find_elements(By.CSS_SELECTOR, ".n-select-menu .n-base-select-option")
+            print(f"    portal 选项数量: {len(options)}")
+            if not options:
+                options = driver.find_elements(By.XPATH,
+                    "//div[contains(@class, 'n-base-select-option') and contains(@class, 'n-base-select-option--show-checkmark')]")
+                print(f"    fallback 选项数量: {len(options)}")
+
             for i, o in enumerate(options):
-                print(f"      option[{i}]: text='{o.text}', display={o.is_displayed()}")
-
-            if not options:
-                print("    选项未出现，等待 1s 重试...")
-                time.sleep(1)
-                options = driver.find_elements(By.CSS_SELECTOR, ".n-base-select-option__content")
-                print(f"    重试后 options 数量: {len(options)}")
-
-            if not options:
-                print("    仍无选项，尝试直接点击选项标签（可能的 portal 模式）")
-                # Naive UI 可能把选项渲染到 body 末尾的 portal 中
-                all_options = driver.find_elements(By.XPATH, "//div[contains(@class, 'n-base-select-option')]")
-                print(f"    n-base-select-option (任意): {len(all_options)}")
-                for i, o in enumerate(all_options):
-                    print(f"      option[{i}]: display={o.is_displayed()}, text='{(o.text or '')[:40]}'")
-
-                # 还可能是 .n-select-menu 里的
-                menus = driver.find_elements(By.CSS_SELECTOR, ".n-select-menu")
-                print(f"    .n-select-menu: {len(menus)}")
-
-                menu_items = driver.find_elements(By.CSS_SELECTOR, ".n-select-menu .n-base-select-option")
-                print(f"    菜单内选项: {len(menu_items)}")
-                for i, mi in enumerate(menu_items):
-                    print(f"      menu-option[{i}]: text='{(mi.text or '')[:40]}', display={mi.is_displayed()}")
-
-                if menu_items:
-                    options = menu_items
+                print(f"      option[{i}]: text='{o.text}', display={o.is_displayed()}, tag={o.tag_name}, classes={o.get_attribute('class')[:80]}")
 
             if options:
                 print(f"    选择第一个选项: '{options[0].text}'")
+                # Naive UI n-select 需要 mousedown 事件，用 ActionChains 模拟完整鼠标操作
                 try:
-                    options[0].click()
+                    from selenium.webdriver.common.action_chains import ActionChains
+                    actions = ActionChains(driver)
+                    actions.move_to_element(options[0])
+                    actions.pause(0.1)
+                    actions.click()
+                    actions.perform()
+                    print(f"    使用 ActionChains 点击成功")
                 except:
-                    driver.execute_script("arguments[0].click();", options[0])
-                time.sleep(0.3)
+                    # 回退：JS 派发 mousedown 事件
+                    driver.execute_script("""
+                        arguments[0].dispatchEvent(new MouseEvent('mousedown', {
+                            bubbles: true, cancelable: true, view: window
+                        }));
+                    """, options[0])
+                    print(f"    使用 JS mousedown 回退")
+                time.sleep(0.5)
             else:
                 print("    [警告] 无任何选项可选！")
         else:
