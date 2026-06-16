@@ -1183,7 +1183,7 @@ class OJWorker(QThread):
             self.finished.emit()
 
     def _handle_draw_modal(self, driver):
-        """处理抽题弹窗：检测弹窗 → 选第一个选项 → 点击抽题（含JS回退 + portal检测）"""
+        """处理抽题弹窗：检测弹窗 → 选择所有下拉框 → 点击抽题（含JS回退 + portal检测）"""
         try:
             modal = driver.find_elements(By.CSS_SELECTOR, ".n-card.n-modal")
             if not modal:
@@ -1191,62 +1191,61 @@ class OJWorker(QThread):
                 if not modal:
                     return False
 
-            self.log("检测到抽题弹窗，自动选择第一个选项...", "system")
-            try:
-                radio_label = driver.find_element(By.XPATH, "//div[contains(text(), '切换到题目类别')]")
-                radio_label.click()
-            except:
-                pass
+            self.log("检测到抽题弹窗，自动选择选项...", "system")
 
-            wait_and_click = self._make_wait_click(driver)
+            # 找到所有选择框并逐一选择第一个选项
+            selectors = driver.find_elements(By.CSS_SELECTOR, ".n-select .n-base-selection")
+            for sel in selectors:
+                if not sel.is_displayed():
+                    continue
 
-            # 点击选择框（若被拦截则用 JS 回退）
-            try:
-                sel = driver.find_element(By.CSS_SELECTOR, ".n-select .n-base-selection")
-                sel.click()
-            except:
-                driver.execute_script("arguments[0].click();", sel)
-            time.sleep(0.5)
-
-            # 获取选项（portal 模式：选项渲染在 v-binder-follower-container 中）
-            options = driver.find_elements(By.CSS_SELECTOR, ".n-select-menu .n-base-select-option")
-            if not options:
-                options = driver.find_elements(By.XPATH,
-                    "//div[contains(@class, 'n-base-select-option') and contains(@class, 'n-base-select-option--show-checkmark')]")
-
-            if options:
-                self.log(f"选择: {options[0].text}", "info")
-                # Naive UI n-select 需要 mousedown 事件触发选择，用 ActionChains 模拟完整鼠标操作
+                # 打开下拉（若被拦截则用 JS 回退）
                 try:
-                    from selenium.webdriver.common.action_chains import ActionChains
-                    actions = ActionChains(driver)
-                    actions.move_to_element(options[0])
-                    actions.pause(0.1)
-                    actions.click()
-                    actions.perform()
+                    sel.click()
                 except:
-                    # 回退：JS 派发 mousedown 事件
-                    driver.execute_script("""
-                        arguments[0].dispatchEvent(new MouseEvent('mousedown', {
-                            bubbles: true, cancelable: true, view: window
-                        }));
-                    """, options[0])
-            else:
-                self.log("未找到任何选项", "warning")
+                    driver.execute_script("arguments[0].click();", sel)
+                time.sleep(0.5)
 
-            time.sleep(0.5)
-            draw_btn = wait_and_click(By.XPATH, "//button[span[contains(text(), '我要抽题')]]")
-            if not draw_btn:
-                btns = driver.find_elements(By.XPATH, "//button[span[contains(text(), '我要抽题')]]")
-                if btns:
-                    driver.execute_script("arguments[0].click();", btns[0])
+                # 获取 portal 中的选项
+                options = driver.find_elements(By.CSS_SELECTOR, ".n-select-menu .n-base-select-option")
+                if not options:
+                    options = [o for o in driver.find_elements(By.XPATH,
+                        "//div[contains(@class, 'n-base-select-option') and contains(@class, 'n-base-select-option--show-checkmark')]")
+                        if o.is_displayed()]
+
+                # 选择第一个可见有文本的选项
+                for opt in options:
+                    if opt.is_displayed() and opt.text.strip():
+                        self.log(f"选择: {opt.text[:40]}", "info")
+                        try:
+                            ActionChains(driver).move_to_element(opt).pause(0.1).click().perform()
+                        except:
+                            driver.execute_script("""
+                                arguments[0].dispatchEvent(new MouseEvent('mousedown', {
+                                    bubbles: true, cancelable: true, view: window
+                                }));
+                            """, opt)
+                        time.sleep(0.3)
+                        break
+
+            # 点击"我要抽题"
+            time.sleep(0.3)
+            draw_btn = driver.find_elements(By.XPATH, "//button[span[contains(text(), '我要抽题')]]")
+            if draw_btn:
+                try:
+                    draw_btn[0].click()
+                except:
+                    driver.execute_script("arguments[0].click();", draw_btn[0])
+                self.log("已点击'我要抽题'", "success")
+            else:
+                self.log("未找到'我要抽题'按钮", "warning")
 
             time.sleep(2)
 
-            # 检查是否弹窗已关闭
+            # 验证弹窗已关闭
             still_modal = driver.find_elements(By.CSS_SELECTOR, ".n-card.n-modal")
             if still_modal:
-                self.log("抽题后弹窗未关闭（可能类别选择无效），继续尝试...", "warning")
+                self.log("抽题后弹窗未关闭（可能类别选择无效）", "warning")
             else:
                 self.log("抽题弹窗已关闭", "success")
             return True
