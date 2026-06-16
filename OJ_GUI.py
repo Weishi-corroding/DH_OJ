@@ -1183,11 +1183,13 @@ class OJWorker(QThread):
             self.finished.emit()
 
     def _handle_draw_modal(self, driver):
-        """处理抽题弹窗：检测弹窗 → 选第一个选项 → 点击抽题。返回 True 表示处理了弹窗"""
+        """处理抽题弹窗：检测弹窗 → 选第一个选项 → 点击抽题（含JS回退 + portal检测）"""
         try:
             modal = driver.find_elements(By.CSS_SELECTOR, ".n-card.n-modal")
             if not modal:
-                return False
+                modal = driver.find_elements(By.CSS_SELECTOR, ".n-dialog")
+                if not modal:
+                    return False
 
             self.log("检测到抽题弹窗，自动选择第一个选项...", "system")
             try:
@@ -1197,19 +1199,50 @@ class OJWorker(QThread):
                 pass
 
             wait_and_click = self._make_wait_click(driver)
-            wait_and_click(By.CSS_SELECTOR, ".n-select .n-base-selection")
+
+            # 点击选择框（若被拦截则用 JS 回退）
+            try:
+                sel = driver.find_element(By.CSS_SELECTOR, ".n-select .n-base-selection")
+                sel.click()
+            except:
+                driver.execute_script("arguments[0].click();", sel)
             time.sleep(0.3)
 
+            # 获取选项（含 portal 模式 fallback）
             options = driver.find_elements(By.CSS_SELECTOR, ".n-base-select-option__content")
+            if not options:
+                # 可能渲染到 portal 中
+                options = driver.find_elements(By.XPATH,
+                    "//div[contains(@class, 'n-base-select-option')]")
+            if not options:
+                # 可能是 n-select-menu 里的
+                options = driver.find_elements(By.CSS_SELECTOR, ".n-select-menu .n-base-select-option")
+
             if options:
                 self.log(f"选择: {options[0].text}", "info")
-                options[0].click()
+                try:
+                    options[0].click()
+                except:
+                    driver.execute_script("arguments[0].click();", options[0])
             else:
                 self.log("未找到任何选项", "warning")
 
             time.sleep(0.3)
-            wait_and_click(By.XPATH, "//button[span[contains(text(), '我要抽题')]]")
+            draw_btn = wait_and_click(By.XPATH, "//button[span[contains(text(), '我要抽题')]]")
+            if not draw_btn:
+                # JS 回退
+                btns = driver.find_elements(By.XPATH, "//button[span[contains(text(), '我要抽题')]]")
+                if btns:
+                    driver.execute_script("arguments[0].click();", btns[0])
+
             time.sleep(2)
+
+            # 检查是否弹窗已关闭
+            still_modal = driver.find_elements(By.CSS_SELECTOR, ".n-card.n-modal")
+            if still_modal:
+                self.log("抽题后弹窗未关闭（可能类别选择无效），继续尝试...", "warning")
+            else:
+                self.log("抽题弹窗已关闭", "success")
             return True
         except Exception as e:
             self.log(f"抽题弹窗处理异常: {e}", "warning")
@@ -1614,6 +1647,8 @@ class OJWorker(QThread):
                         pass
 
                     submitted = True
+                    # 标记首次检查需要用长超时等待"已AC但未提交"弹窗
+                    _ac_wait_done = False
 
                 # ---- 等待判题 ----
                 self.log("等待判题结果...", "info")
@@ -1622,19 +1657,25 @@ class OJWorker(QThread):
                 # ---- 结果检查 ----
 
                 # 1. "已AC但未提交"确认弹窗（AC后先弹此窗，提交后才出现"我要抽题"）
-                ac_dialog = self.driver.find_elements(By.XPATH,
-                    "//*[contains(text(), '已AC') and contains(text(), '未提交')]")
-                if ac_dialog:
-                    self.log("检测到'已AC但未提交'弹窗，点击提交...", "system")
+                #    首次检查用30s长超时，后续用瞬时检查避免每次循环都空等30s
+                ac_timeout = 30 if not _ac_wait_done else 3
+                ac_submit_btn = wait_and_click(By.XPATH,
+                    "//div[contains(@class, 'n-dialog__action')]//button[span[contains(text(), '提交')]]",
+                    timeout=ac_timeout)
+                _ac_wait_done = True
+
+                if ac_submit_btn:
+                    self.log("检测到'已AC但未提交'弹窗 → 已点击提交", "system")
+                    time.sleep(2)
+
+                    # 点击提交后可能出现抄袭警告
                     try:
-                        confirm_ac = WebDriverWait(self.driver, 5).until(
-                            EC.element_to_be_clickable((By.XPATH,
-                                "//div[contains(@class, 'n-dialog__action')]"
-                                "//button[span[contains(text(), '提交')]]"))
+                        warn = WebDriverWait(self.driver, 3).until(
+                            EC.element_to_be_clickable((By.XPATH, "//button[span[contains(text(), '坚持提交')]]"))
                         )
-                        confirm_ac.click()
-                        self.log("已点击提交确认", "success")
-                        time.sleep(2)
+                        warn.click()
+                        self.log("已点击'坚持提交'", "success")
+                        time.sleep(1)
                     except:
                         pass
 
