@@ -470,7 +470,11 @@ class SidebarButton(QPushButton):
 # ============================================================
 # 内容页面 - 配置
 # ============================================================
-CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "oj_config.json")
+# 打包为 exe 时，配置文件放在 exe 同目录（用户可编辑）
+if getattr(sys, 'frozen', False):
+    CONFIG_FILE = os.path.join(os.path.dirname(sys.executable), "oj_config.json")
+else:
+    CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "oj_config.json")
 
 
 class ConfigPage(QWidget):
@@ -527,9 +531,9 @@ class ConfigPage(QWidget):
         """)
         form_layout.addWidget(section1)
 
-        self.input_oj_url = Win11LineEdit("OJ 地址", "http://oj.dhu.edu.cn")
-        self.input_username = Win11LineEdit("用户名", "weishi_corroding@163.com")
-        self.input_password = Win11LineEdit("密码", "Dh_411411", is_password=True)
+        self.input_oj_url = Win11LineEdit("OJ 地址", "https://oj.dhu.edu.cn/#/user/index")
+        self.input_username = Win11LineEdit("用户名", "")
+        self.input_password = Win11LineEdit("密码", "", is_password=True)
 
         form_layout.addWidget(self.input_oj_url)
         form_layout.addWidget(self.input_username)
@@ -546,9 +550,9 @@ class ConfigPage(QWidget):
         """)
         form_layout.addWidget(section2)
 
-        self.input_api_key = Win11LineEdit("API Key", "sk-e00efab0672a406e9a1bf9b865145064")
-        self.input_api_url = Win11LineEdit("API 地址", "https://api.deepseek.com")
-        self.input_model = Win11LineEdit("模型", "deepseek-chat")
+        self.input_api_key = Win11LineEdit("API Key", "")
+        self.input_api_url = Win11LineEdit("API 地址", "")
+        self.input_model = Win11LineEdit("模型", "")
 
         form_layout.addWidget(self.input_api_key)
         form_layout.addWidget(self.input_api_url)
@@ -1079,6 +1083,13 @@ class RunPage(QWidget):
 
         main_win = self.window()
         cfg = main_win.page_config.get_config()
+
+        # 检查必要配置
+        missing = [k for k in ["api_key", "username", "password"] if not cfg.get(k)]
+        if missing:
+            self.log_signal.emit(f"配置不完整，请先在设置页填写: {', '.join(missing)}", "error")
+            return
+
         os.environ['DEEPSEEK_API_KEY'] = cfg["api_key"]
 
         self.running = True
