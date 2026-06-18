@@ -722,11 +722,14 @@ class Win11LineEdit(QWidget):
 # Win11 风格按钮
 # ============================================================
 class Win11Button(QPushButton):
-    def __init__(self, text, primary=True, small=False, parent=None):
+    def __init__(self, text, primary=True, small=False, bg_color=None, hover_color=None, parent=None):
         super().__init__(text, parent)
         self._primary = primary
         self._hovered = False
         self._pressed = False
+        # 自定义主色（仅 primary=True 时生效，None 表示使用默认蓝色）
+        self._bg_color = bg_color
+        self._hover_color = hover_color
 
         self.setCursor(Qt.PointingHandCursor)
 
@@ -737,37 +740,54 @@ class Win11Button(QPushButton):
             self.setFixedHeight(36)
             font_size = 11
 
+        self._font_size = font_size
+        self._apply_stylesheet()
+
+    def _apply_stylesheet(self):
+        bg = self._bg_color if (self._primary and self._bg_color) else BTN_PRIMARY_BG
+        hover = self._hover_color if (self._primary and self._hover_color) else BTN_PRIMARY_HOVER
         self.setStyleSheet(f"""
             QPushButton {{
                 font-family: "{FONT_FAMILY}";
-                font-size: {font_size}px;
+                font-size: {self._font_size}px;
                 font-weight: 500;
                 border: none;
                 border-radius: 4px;
                 padding: 0 20px;
-                background: {BTN_PRIMARY_BG if primary else "transparent"};
-                color: {"#FFFFFF" if primary else TEXT_PRIMARY};
+                background: {bg if self._primary else "transparent"};
+                color: {"#FFFFFF" if self._primary else TEXT_PRIMARY};
             }}
             QPushButton:hover {{
-                background: {BTN_PRIMARY_HOVER if primary else BTN_HOVER_BG};
+                background: {hover if self._primary else BTN_HOVER_BG};
             }}
             QPushButton:pressed {{
-                background: {BTN_PRIMARY_HOVER if primary else "#D0D0D0"};
+                background: {hover if self._primary else "#D0D0D0"};
             }}
             QPushButton:disabled {{
-                background: {"#C0C0C0" if primary else "transparent"};
-                color: {"#FFFFFF" if primary else TEXT_PLACEHOLDER};
+                background: {"#C0C0C0" if self._primary else "transparent"};
+                color: {"#FFFFFF" if self._primary else TEXT_PLACEHOLDER};
             }}
         """)
+
+    def set_bg(self, bg_color, hover_color):
+        """运行时切换主色（用于按钮三态切换）。传 None 恢复默认蓝色。"""
+        self._bg_color = bg_color
+        self._hover_color = hover_color
+        self._apply_stylesheet()
+        self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         rect = self.rect()
 
-        bg = QColor(BTN_PRIMARY_BG) if self._primary else QColor(0, 0, 0, 0)
+        # 主色：自定义优先，否则用默认蓝
+        primary_bg = QColor(self._bg_color) if self._bg_color else QColor(BTN_PRIMARY_BG)
+        primary_hover = QColor(self._hover_color) if self._hover_color else QColor(BTN_PRIMARY_HOVER)
+
+        bg = primary_bg if self._primary else QColor(0, 0, 0, 0)
         if self._hovered:
-            bg = QColor(BTN_PRIMARY_HOVER) if self._primary else QColor(0, 0, 0, 20)
+            bg = primary_hover if self._primary else QColor(0, 0, 0, 20)
         if not self.isEnabled():
             bg = QColor(192, 192, 192) if self._primary else QColor(0, 0, 0, 0)
 
@@ -809,6 +829,104 @@ class Win11Button(QPushButton):
         self._pressed = False
         self.update()
         super().mouseReleaseEvent(event)
+
+
+# ============================================================
+# Win11 风格复选框
+# ============================================================
+class Win11CheckBox(QWidget):
+    """自绘 Win11 风格复选框：16×16 方框 + 蓝色填充 + 白色对勾。
+    支持 toggled 信号、setChecked/isChecked、setToolTip（PyQt5 内置）。
+    """
+    toggled = pyqtSignal(bool)
+
+    def __init__(self, text="", parent=None):
+        super().__init__(parent)
+        self._text = text
+        self._checked = False
+        self._hovered = False
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedHeight(28)
+        self.setMouseTracking(True)
+        # 初步宽度估算（实际由父布局拉伸）
+        font = QFont(FONT_FAMILY, 11)
+        from PyQt5.QtGui import QFontMetrics
+        fm = QFontMetrics(font)
+        self.setMinimumWidth(20 + 8 + fm.horizontalAdvance(text) + 4)
+
+    def setChecked(self, value: bool):
+        if self._checked != bool(value):
+            self._checked = bool(value)
+            self.update()
+            self.toggled.emit(self._checked)
+
+    def isChecked(self):
+        return self._checked
+
+    def setText(self, text: str):
+        self._text = text
+        self.update()
+
+    def text(self):
+        return self._text
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.setChecked(not self._checked)
+        super().mousePressEvent(event)
+
+    def enterEvent(self, event):
+        self._hovered = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hovered = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        box_size = 16
+        box_x = 2
+        box_y = (self.height() - box_size) // 2
+        box_rect = QRectF(box_x, box_y, box_size, box_size)
+
+        if self._checked:
+            # 填充蓝色 + 白勾
+            fill = QColor(ACCENT_BLUE)
+            if self._hovered:
+                fill = QColor(ACCENT_BLUE_HOVER)
+            path = QPainterPath()
+            path.addRoundedRect(box_rect, 3, 3)
+            painter.fillPath(path, fill)
+            # 对勾
+            pen = QPen(QColor("#FFFFFF"), 1.8)
+            pen.setCapStyle(Qt.RoundCap)
+            pen.setJoinStyle(Qt.RoundJoin)
+            painter.setPen(pen)
+            cx = box_x + box_size / 2
+            cy = box_y + box_size / 2
+            painter.drawLine(int(cx - 4), int(cy), int(cx - 1), int(cy + 3))
+            painter.drawLine(int(cx - 1), int(cy + 3), int(cx + 4), int(cy - 3))
+        else:
+            # 空心方框
+            border_color = QColor(ACCENT_BLUE) if self._hovered else QColor("#666666")
+            pen = QPen(border_color, 1.2)
+            painter.setPen(pen)
+            path = QPainterPath()
+            path.addRoundedRect(box_rect, 3, 3)
+            painter.drawPath(path)
+
+        # 文本
+        if self._text:
+            painter.setPen(QColor(TEXT_PRIMARY))
+            font = QFont(FONT_FAMILY, 11)
+            painter.setFont(font)
+            text_rect = QRect(box_x + box_size + 8, 0, self.width() - (box_x + box_size + 8), self.height())
+            painter.drawText(text_rect, Qt.AlignVCenter | Qt.AlignLeft, self._text)
 
 
 # ============================================================
@@ -905,6 +1023,7 @@ class RunPage(QWidget):
         super().__init__(parent)
         self.worker = None
         self.running = False
+        self.paused = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(32, 28, 32, 28)
@@ -1017,7 +1136,18 @@ class RunPage(QWidget):
         delay_row.addWidget(self.delay_hint)
         delay_row.addStretch()
         layout.addLayout(delay_row)
-        layout.addSpacing(20)
+        layout.addSpacing(12)
+
+        # 是否坚持提交（默认勾选；取消勾选时遇到抄袭警告会暂停）
+        self.chk_persist_submit = Win11CheckBox("是否坚持提交")
+        self.chk_persist_submit.setChecked(True)
+        self.chk_persist_submit.setToolTip(
+            "勾选：检测到抄袭警告时自动点击\"坚持提交\"。\n"
+            "不勾选：检测到抄袭警告时暂停程序，由您手动处理\n"
+            "（包括改写代码、自行点击提交等），然后点击\"继续\"恢复自动流程。"
+        )
+        layout.addWidget(self.chk_persist_submit)
+        layout.addSpacing(16)
 
         # 运行参数摘要
         summary_frame = QFrame()
@@ -1071,10 +1201,12 @@ class RunPage(QWidget):
             )
 
     def toggle_oj(self):
-        if self.running:
-            self.stop_oj()
-        else:
+        if not self.running:
             self.start_oj()
+        elif self.paused:
+            self.resume_oj()
+        else:
+            self.stop_oj()
 
     def start_oj(self):
         if self.worker and self.worker.isRunning():
@@ -1093,8 +1225,10 @@ class RunPage(QWidget):
         os.environ['DEEPSEEK_API_KEY'] = cfg["api_key"]
 
         self.running = True
+        self.paused = False
         self.btn_toggle.setText("■ 停止")
         self.btn_toggle._primary = False
+        self.btn_toggle.set_bg(None, None)  # 恢复默认色
         self.btn_toggle.update()
         self.status_dot.setStyleSheet(f"color: {SUCCESS_GREEN}; font-size: 16px;")
         self.status_label.setText("运行中...")
@@ -1116,8 +1250,16 @@ class RunPage(QWidget):
             self.log_signal.emit("延迟时间格式错误，使用默认值0秒", "warning")
 
         self.worker = OJWorker(cfg, delay_seconds)
+        self.worker.set_persist_submit(self.chk_persist_submit.isChecked())
         self.worker.log_signal.connect(lambda msg, lv: self.log_signal.emit(msg, lv))
         self.worker.finished.connect(self._on_worker_finished)
+        self.worker.paused_signal.connect(self._on_worker_paused)
+        # 复选框热更新到 worker
+        try:
+            self.chk_persist_submit.toggled.disconnect()
+        except TypeError:
+            pass
+        self.chk_persist_submit.toggled.connect(self._on_persist_submit_toggled)
         self.worker.start()
 
     def stop_oj(self):
@@ -1131,10 +1273,52 @@ class RunPage(QWidget):
             # 确保 UI 恢复（terminate 时 finished 信号不会触发）
             self._on_worker_finished()
 
+    def resume_oj(self):
+        """从暂停状态恢复运行"""
+        if not (self.worker and self.worker.isRunning()):
+            return
+        self.log_signal.emit("继续运行...", "system")
+        self.paused = False
+        self.btn_toggle.setText("■ 停止")
+        self.btn_toggle._primary = False
+        self.btn_toggle.set_bg(None, None)  # 恢复默认（非 primary 状态下颜色无关，但保险起见清掉）
+        self.btn_toggle.update()
+        self.status_dot.setStyleSheet(f"color: {SUCCESS_GREEN}; font-size: 16px;")
+        self.status_label.setText("运行中...")
+        self.status_label.setStyleSheet(f"""
+            font-family: "{FONT_FAMILY}";
+            font-size: 12px;
+            font-weight: 500;
+            color: {SUCCESS_GREEN};
+        """)
+        self.worker.resume()
+
+    def _on_worker_paused(self):
+        """worker 进入暂停时，更新按钮为橙色'继续'"""
+        self.paused = True
+        self.btn_toggle.setText("▶ 继续")
+        self.btn_toggle._primary = True
+        self.btn_toggle.set_bg(WARNING_ORANGE, "#E67E00")
+        self.btn_toggle.update()
+        self.status_dot.setStyleSheet(f"color: {WARNING_ORANGE}; font-size: 16px;")
+        self.status_label.setText("已暂停")
+        self.status_label.setStyleSheet(f"""
+            font-family: "{FONT_FAMILY}";
+            font-size: 12px;
+            font-weight: 500;
+            color: {WARNING_ORANGE};
+        """)
+
+    def _on_persist_submit_toggled(self, value: bool):
+        if self.worker and self.worker.isRunning():
+            self.worker.set_persist_submit(value)
+
     def _on_worker_finished(self):
         self.running = False
+        self.paused = False
         self.btn_toggle.setText("▶ 开始运行")
         self.btn_toggle._primary = True
+        self.btn_toggle.set_bg(None, None)  # 恢复默认蓝色
         self.btn_toggle.update()
         self.status_dot.setStyleSheet(f"color: {TEXT_PLACEHOLDER}; font-size: 16px;")
         self.status_label.setText("已停止")
@@ -1160,22 +1344,39 @@ class RunPage(QWidget):
 class OJWorker(QThread):
     log_signal = pyqtSignal(str, str)
     finished = pyqtSignal()
+    paused_signal = pyqtSignal()  # 进入暂停时发射，让 GUI 切换为'继续'按钮
 
     def __init__(self, config, delay_seconds=0, parent=None):
         super().__init__(parent)
         self.config = config
         self.delay_seconds = delay_seconds
         self._stop_flag = False
+        self._pause_flag = False
+        self._persist_submit = True  # 是否自动点击'坚持提交'，由 GUI 同步
         self.driver = None
 
     def stop(self):
         self._stop_flag = True
+        self._pause_flag = False  # 解除暂停以让 _wait_if_paused 立即退出
         # 立即关闭浏览器，打断 Selenium 阻塞操作
         if self.driver:
             try:
                 self.driver.quit()
             except:
                 pass
+
+    def resume(self):
+        """从暂停状态恢复（清除 pause flag，让 _wait_if_paused 退出）"""
+        self._pause_flag = False
+
+    def set_persist_submit(self, value: bool):
+        """GUI 在 checkbox 切换时同步过来"""
+        self._persist_submit = bool(value)
+
+    def _wait_if_paused(self):
+        """阻塞直到 _pause_flag=False 或 _stop_flag=True"""
+        while self._pause_flag and not self._stop_flag:
+            time.sleep(0.1)
 
     def log(self, msg, level="info"):
         self.log_signal.emit(msg, level)
@@ -1263,6 +1464,109 @@ class OJWorker(QThread):
         except Exception as e:
             self.log(f"抽题弹窗处理异常: {e}", "warning")
             return False
+
+    def _handle_persist_submit_warning(self, timeout=3):
+        """检测'坚持提交'按钮（抄袭警告）。
+        返回值:
+            'auto_clicked'   - 自动点击成功
+            'paused_resumed' - 用户暂停后已恢复，由 _recover_after_resume 处理后续
+            'none'           - 无警告
+        """
+        try:
+            warn = WebDriverWait(self.driver, timeout).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[span[contains(text(), '坚持提交')]]"))
+            )
+        except:
+            return 'none'
+
+        if self._persist_submit:
+            try:
+                warn.click()
+            except:
+                self.driver.execute_script("arguments[0].click();", warn)
+            self.log("已点击'坚持提交'", "success")
+            time.sleep(1)
+            return 'auto_clicked'
+
+        # 不勾选 → 暂停等待用户处理
+        self.log("⏸ 检测到抄袭警告，已暂停。请在浏览器中手动处理后点击'继续'。", "warning")
+        self._pause_flag = True
+        self.paused_signal.emit()
+        self._wait_if_paused()
+        if self._stop_flag:
+            return 'none'
+        self.log("▶ 用户已点击继续，开始容错恢复...", "system")
+        return 'paused_resumed'
+
+    def _recover_after_resume(self):
+        """用户点'继续'后，根据当前 DOM 状态把流程带回标准循环。
+        返回:
+            'next_problem' - 已进入下一题或抽题成功，应跳出内层循环
+            'done'         - 已通关，整个外层循环结束
+            'retry_outer'  - 应让内层循环再跑一轮结果检查
+        """
+        d = self.driver
+        time.sleep(0.5)
+
+        # 通关弹窗的'我要抽题'按钮还在
+        try:
+            next_btn = d.find_elements(By.XPATH, "//button[span[contains(text(), '我要抽题')]]")
+            if next_btn and next_btn[0].is_displayed():
+                self.log("[恢复] 通关弹窗仍在，自动点击'我要抽题'", "info")
+                try:
+                    next_btn[0].click()
+                except:
+                    d.execute_script("arguments[0].click();", next_btn[0])
+                time.sleep(2)
+                self._handle_draw_modal(d)
+                return 'next_problem'
+        except:
+            pass
+
+        # 已通关全部题目
+        try:
+            if d.find_elements(By.XPATH, "//div[contains(text(), '已通关')]"):
+                self.log("[恢复] 检测到已通关", "success")
+                return 'done'
+        except:
+            pass
+
+        # 抽题弹窗（用户已进入通关弹窗后但未选选项）
+        try:
+            if self._handle_draw_modal(d):
+                return 'next_problem'
+        except:
+            pass
+
+        # AC 确认弹窗仍在（用户没点提交）
+        try:
+            ac_btn = d.find_elements(By.XPATH,
+                "//div[contains(@class, 'n-dialog__action')]//button[span[contains(text(), '提交')]]")
+            if ac_btn and ac_btn[0].is_displayed():
+                self.log("[恢复] AC 确认弹窗仍在，自动点击'提交'", "info")
+                try:
+                    ac_btn[0].click()
+                except:
+                    d.execute_script("arguments[0].click();", ac_btn[0])
+                time.sleep(2)
+                # 二次警告：再走一遍处理（若用户依然未勾选会再次暂停）
+                self._handle_persist_submit_warning(timeout=2)
+                return 'retry_outer'
+        except:
+            pass
+
+        # 抄袭警告还在（用户没动）
+        try:
+            if d.find_elements(By.XPATH, "//button[span[contains(text(), '坚持提交')]]"):
+                self.log("[恢复] '坚持提交'按钮仍在，按当前勾选状态再处理一次", "info")
+                self._handle_persist_submit_warning(timeout=2)
+                return 'retry_outer'
+        except:
+            pass
+
+        # 默认：未识别到任何已知弹窗 → 假定用户已处理完毕进入下一题
+        self.log("[恢复] 未识别到弹窗状态，进入新一轮解题循环", "info")
+        return 'next_problem'
 
     def _fill_code_editor(self, code):
         """填入代码到编辑器，使用多种方法回退"""
@@ -1469,10 +1773,10 @@ class OJWorker(QThread):
         wait_and_input = self._make_wait_input(self.driver)
 
         def get_ai_solution(prompt_content, current_code=None, error_msg=None):
-            system_prompt = "你是一个C++算法竞赛专家。请直接输出可编译的完整C++代码(使用MinGW标准)，不要包含markdown标记(如```cpp)，不要包含任何解释性文字，不要输出注释。参考题解仅供思路参考，保留核心功能即可，不要照搬其结构。"
+            system_prompt = "你是一个C++算法竞赛专家。请直接输出可编译的完整C++代码(使用MinGW标准)，不要包含markdown标记(如```cpp)，不要包含任何解释性文字，不要输出注释。参考题解仅供思路参考，保留能完成题目的最小核心功能即可，不要照搬其结构。"
             user_content = prompt_content
             if error_msg:
-                user_content = f"我之前的代码如下：\n{current_code}\n\n报错信息如下：\n{error_msg}\n\n请根据报错修正代码，直接输出修正后的完整代码。"
+                user_content = f"我之前的代码如下：\n{current_code}\n\n题目要求是：\n{prompt_content}\n\n报错信息如下：\n{error_msg}\n\n请根据报错修正代码，直接输出修正后的完整代码。"
             try:
                 response = client.chat.completions.create(
                     model=self.config["model"],
@@ -1580,7 +1884,8 @@ class OJWorker(QThread):
 
         # ---- 循环做题 ----
         while not self._stop_flag:
-            # 每次新题目前检查抽题弹窗（非首次已在 break 前处理）
+            # 暂停检查点
+            self._wait_if_paused()
             if self._stop_flag:
                 break
 
@@ -1636,6 +1941,11 @@ class OJWorker(QThread):
             solved = False
             submitted = False
             while not solved and not self._stop_flag:
+                # 暂停检查点
+                self._wait_if_paused()
+                if self._stop_flag:
+                    break
+
                 # ---- 提交（仅在首次或修复后执行） ----
                 if not submitted:
                     self.log("提交代码中...", "system")
@@ -1644,27 +1954,6 @@ class OJWorker(QThread):
                         self.log("提交按钮未找到", "error")
                         break
 
-                    # 确认弹窗
-                    try:
-                        confirm = WebDriverWait(self.driver, 5).until(
-                            EC.element_to_be_clickable((By.XPATH, "//div[@class='n-dialog__action']//button[span[contains(text(), '提交')]]"))
-                        )
-                        confirm.click()
-                    except:
-                        pass
-
-                    # 抄袭警告
-                    try:
-                        warning = WebDriverWait(self.driver, 2).until(
-                            EC.element_to_be_clickable((By.XPATH, "//button[span[contains(text(), '坚持提交')]]"))
-                        )
-                        warning.click()
-                    except:
-                        pass
-
-                    submitted = True
-                    # 标记首次检查需要用长超时等待"已AC但未提交"弹窗
-                    _ac_wait_done = False
 
                 # ---- 等待判题 ----
                 self.log("等待判题结果...", "info")
@@ -1681,16 +1970,23 @@ class OJWorker(QThread):
                     self.log("检测到'已AC但未提交'弹窗 → 已点击提交", "system")
                     time.sleep(2)
 
-                    # 点击提交后可能出现抄袭警告
-                    try:
-                        warn = WebDriverWait(self.driver, 3).until(
-                            EC.element_to_be_clickable((By.XPATH, "//button[span[contains(text(), '坚持提交')]]"))
-                        )
-                        warn.click()
-                        self.log("已点击'坚持提交'", "success")
-                        time.sleep(1)
-                    except:
-                        pass
+                    # 点击提交后可能出现抄袭警告 —— 走统一处理（支持暂停模式）
+                    warning_result = self._handle_persist_submit_warning(timeout=3)
+                    if self._stop_flag:
+                        break
+                    if warning_result == 'paused_resumed':
+                        recovery = self._recover_after_resume()
+                        if self._stop_flag:
+                            break
+                        if recovery == 'done':
+                            solved = True
+                            break
+                        if recovery == 'next_problem':
+                            solved = True
+                            break  # 跳出内层 → 外层进入下一题
+                        # 'retry_outer'：让内层下一轮重新检查 AC/通关
+                        submitted = True  # 不再重复提交
+                        continue
 
                 # 2. "我要抽题"按钮（通关弹窗）
                 next_btn = self.driver.find_elements(By.XPATH, "//button[span[contains(text(), '我要抽题')]]")
@@ -1706,7 +2002,7 @@ class OJWorker(QThread):
                 # 3. "已通关"（全部题目完成）
                 cleared = self.driver.find_elements(By.XPATH, "//div[contains(text(), '已通关')]")
                 if cleared:
-                    self.log("🎉 已通关所有题目！", "success")
+                    self.log("🎉 已通关当前题组！", "success")
                     solved = True
                     break
 
