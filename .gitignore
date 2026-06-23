@@ -108,6 +108,7 @@ cookies.json
 *.pyo
 
 # 编辑器
+.vscode/
 .vscode/settings.json
 
 # 数据文件
