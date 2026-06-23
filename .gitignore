@@ -1,3 +1,94 @@
+# --- 标准 Python 忽略规则 ---
+__pycache__/
+*.py[codz]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.manifest
+pip-log.txt
+pip-delete-this-directory.txt
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py.cover
+.hypothesis/
+.pytest_cache/
+cover/
+*.mo
+*.pot
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+instance/
+.webassets-cache
+.scrapy
+docs/_build/
+.pybuilder/
+target/
+.ipynb_checkpoints
+profile_default/
+ipython_config.py
+__pypackages__/
+celerybeat-schedule
+celerybeat.pid
+*.rdb
+*.aof
+*.pid
+mnesia/
+rabbitmq/
+rabbitmq-data/
+activemq-data/
+*.sage.py
+.env
+.envrc
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.spyderproject
+.spyproject
+.ropeproject
+/site
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+cython_debug/
+.ruff_cache/
+.pypirc
+marimo/_static/
+marimo/_lsp/
+__marimo__/
+.streamlit/secrets.toml
+
+# --- 项目专属忽略规则 ---
 # 个人配置（含 API Key / 密码）
 oj_config.json
 
@@ -7,17 +98,12 @@ oj_solutions.json
 # 浏览器会话数据（含登录凭证）
 cookies.json
 
-# 构建产物
-dist/
-build/
-
 # 编译产物
 *.exe
 *.obj
 *.o
 
 # Python 缓存
-__pycache__/
 *.pyc
 *.pyo
 
@@ -42,3 +128,6 @@ mem_check.ps1
 
 # 内置 WebDriver 二进制
 chrome/
+
+# 临时文件
+tempCodeRunnerFile.py
