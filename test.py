@@ -11,13 +11,13 @@ from openai import OpenAI
 import os
 
 # ================= 配置区域 =================
-# DeepSeek API Key
-os.environ['DEEPSEEK_API_KEY'] = 'sk-e00efab0672a406e9a1bf9b865145064'
+# DeepSeek API Key — 请通过环境变量 DEEPSEEK_API_KEY 设置，或直接修改下方默认值
+os.environ.setdefault('DEEPSEEK_API_KEY', 'your-api-key-here')
 
 # 账号信息
 OJ_URL = "http://oj.dhu.edu.cn"
-USERNAME = "weishi_corroding@163.com"
-PASSWORD = "Dh_411411"
+USERNAME = "your-username"
+PASSWORD = "your-password"
 
 # 初始化 DeepSeek 客户端
 # (逻辑已确认与测试脚本一致)
